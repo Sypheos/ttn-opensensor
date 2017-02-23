@@ -1,25 +1,26 @@
 package opensensor
 
 import (
-	"testing"
-	"github.com/TheThingsNetwork/ttn/mqtt"
+	"bytes"
+	"encoding/json"
 	"github.com/TheThingsNetwork/go-utils/log/apex"
 	"github.com/TheThingsNetwork/ttn/core/types"
-	"encoding/json"
-	"time"
+	"github.com/TheThingsNetwork/ttn/mqtt"
+	"github.com/magiconair/properties/assert"
 	"io/ioutil"
 	"net/http"
-	"github.com/magiconair/properties/assert"
-	"bytes"
+	"testing"
+	"time"
 )
 
 func TestUplink(t *testing.T) {
 
 	sensor := OpenSensorAccess{"5885", "yEUIsPrx", "5b46e6e9-d572-49a7-bce8-bfcf5362550c",
-					      "http://localhost:3000"}
+		"http://localhost:3000"}
 	ttna := TtnAccess{"open-sensor", "ttn-account-v2.CLWM-c78CsFxUUZPfXCe9933kdVHdV1nIzrNk-kApP8",
 		"tcp://localhost:1883", "heater"}
-	Start(ttna, sensor)
+	o := NewOpenSensor(ttna, sensor)
+	o.Start(ttna, sensor)
 	t.Run("httpServ", func(t *testing.T) {
 		ctx := apex.Stdout().WithField("TestClientPub", "testClient")
 		client := mqtt.NewClient(ctx, "ttnctl", ttna.AppId, ttna.Key, ttna.Broker)
@@ -27,15 +28,15 @@ func TestUplink(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer client.Disconnect()
-		<-time.After(time.Millisecond*500)
-		token := client.PublishUplink(types.UplinkMessage{AppID: ttna.AppId, DevID: ttna.DeviceId, PayloadRaw:[]byte("{\"temp\":20}")})
+		<-time.After(time.Millisecond * 500)
+		token := client.PublishUplink(types.UplinkMessage{AppID: ttna.AppId, DevID: ttna.DeviceId, PayloadRaw: []byte("{\"temp\":20}")})
 		token.Wait()
 		if token.Error() != nil {
 			t.Fatal(token.Error().Error())
 		}
 	})
 	ch := make(chan []byte)
-	go func () {
+	go func() {
 		http.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
 			str, err := ioutil.ReadAll(req.Body)
 			if err != nil {
@@ -46,7 +47,7 @@ func TestUplink(t *testing.T) {
 		http.ListenAndServe(":3000", nil)
 	}()
 	select {
-	case str := <- ch:
+	case str := <-ch:
 		buff := new(bytes.Buffer)
 		buff.Write(str)
 		r := openSensorData{}
