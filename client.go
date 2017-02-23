@@ -16,46 +16,46 @@ import (
 
 const id string = "ttnctl"
 const logName = "Opensensor"
-const OpenSensorURI string = "https://realtime.opensensors.io/v1/topics/"
-const uriClientId string = "client-id"
-const uriPassword string = "password"
 
-//The Thing Network mqtt parameters
+//TtnAccess structure representing The Thing Network mqtt parameters
 type TtnAccess struct {
-	AppId, Key, Broker, DeviceId string
+	AppID, Key, Broker, DeviceID string
 }
 
-//OpenSensor mqtt parameters
-type OpenSensorAccess struct {
-	ClientId, Pw, Key, Topic string
+//SensorAccess, OpenSensor.io http endpoint parameters http parameters
+type SensorAccess struct {
+	ClientID, Pw, Key, Topic string
 }
 
 type openSensorData struct {
 	Data []byte `json:"data"`
 }
 
+//OpenSensor integration structure definition
 type OpenSensor struct {
 	ctx          log.Interface
 	mqtt         mqtt.Client
-	sensorAccess OpenSensorAccess
+	sensorAccess SensorAccess
 	ttnAccess    TtnAccess
 }
 
-func NewOpenSensor(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) *OpenSensor {
-	c := apex.Stdout().WithField(logName, fmt.Sprint(ttnAccess.AppId, ":", ttnAccess.DeviceId,
+//NewOpenSensor create a new OpenSensor integration for one device
+func NewOpenSensor(ttnAccess TtnAccess, sensorAccess SensorAccess) *OpenSensor {
+	c := apex.Stdout().WithField(logName, fmt.Sprint(ttnAccess.AppID, ":", ttnAccess.DeviceID,
 		" with ", sensorAccess.Topic))
-	return &OpenSensor{ctx: c, mqtt: mqtt.NewClient(c, id, ttnAccess.AppId, ttnAccess.Key, ttnAccess.Broker),
+	return &OpenSensor{ctx: c, mqtt: mqtt.NewClient(c, id, ttnAccess.AppID, ttnAccess.Key, ttnAccess.Broker),
 		ttnAccess: ttnAccess, sensorAccess: sensorAccess}
 }
 
-func (o *OpenSensor) Start(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) {
+//Start integration. Will fatal if connection or mqtt subscription is impossible.
+func (o *OpenSensor) Start() {
 
 	if err := o.mqtt.Connect(); err != nil {
 		o.ctx.WithError(err).Fatal("Could not connect")
 	}
-	token := o.mqtt.SubscribeDeviceUplink(ttnAccess.AppId, ttnAccess.DeviceId,
+	token := o.mqtt.SubscribeDeviceUplink(o.ttnAccess.AppID, o.ttnAccess.DeviceID,
 		func(client mqtt.Client, appID string, devID string, req types.UplinkMessage) {
-			o.uplink(req.PayloadRaw, sensorAccess)
+			o.uplink(req.PayloadRaw)
 		})
 	token.Wait()
 	if err := token.Error(); err != nil {
@@ -63,7 +63,18 @@ func (o *OpenSensor) Start(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) {
 	}
 }
 
-func (o *OpenSensor) uplink(payload []byte, access OpenSensorAccess) {
+//Stop integration. Will fatal if it cannot properly close the connection
+func (o *OpenSensor) Stop() {
+
+	token := o.mqtt.UnsubscribeDeviceUplink(o.ttnAccess.AppID, o.ttnAccess.DeviceID)
+	token.Wait()
+	if err := token.Error(); err != nil {
+		o.ctx.WithError(err).Fatal("Could not unsubcribe from devive uplink")
+	}
+	o.mqtt.Disconnect()
+}
+
+func (o *OpenSensor) uplink(payload []byte) {
 
 	b, err := encode(payload)
 	if err != nil {
@@ -75,7 +86,7 @@ func (o *OpenSensor) uplink(payload []byte, access OpenSensorAccess) {
 	}
 	resp, err := (&http.Client{Transport: tr, Timeout: time.Second * 10}).Post(o.sensorAccess.Topic, "application/json", b)
 	if err != nil {
-		o.ctx.WithError(err).Fatal("Could not reash Opensor http endpoint")
+		o.ctx.WithError(err).Fatal("Could not reach Opensor http endpoint")
 		return
 	}
 	if resp.StatusCode != 200 {

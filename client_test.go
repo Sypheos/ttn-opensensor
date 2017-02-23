@@ -15,21 +15,21 @@ import (
 
 func TestUplink(t *testing.T) {
 
-	sensor := OpenSensorAccess{"5885", "yEUIsPrx", "5b46e6e9-d572-49a7-bce8-bfcf5362550c",
+	sensor := SensorAccess{"5885", "yEUIsPrx", "5b46e6e9-d572-49a7-bce8-bfcf5362550c",
 		"http://localhost:3000"}
 	ttna := TtnAccess{"open-sensor", "ttn-account-v2.CLWM-c78CsFxUUZPfXCe9933kdVHdV1nIzrNk-kApP8",
 		"tcp://localhost:1883", "heater"}
 	o := NewOpenSensor(ttna, sensor)
-	o.Start(ttna, sensor)
+	o.Start()
 	t.Run("httpServ", func(t *testing.T) {
 		ctx := apex.Stdout().WithField("TestClientPub", "testClient")
-		client := mqtt.NewClient(ctx, "ttnctl", ttna.AppId, ttna.Key, ttna.Broker)
+		client := mqtt.NewClient(ctx, "ttnctl", ttna.AppID, ttna.Key, ttna.Broker)
 		if err := client.Connect(); err != nil {
 			t.Fatal(err)
 		}
 		defer client.Disconnect()
 		<-time.After(time.Millisecond * 500)
-		token := client.PublishUplink(types.UplinkMessage{AppID: ttna.AppId, DevID: ttna.DeviceId, PayloadRaw: []byte("{\"temp\":20}")})
+		token := client.PublishUplink(types.UplinkMessage{AppID: ttna.AppID, DevID: ttna.DeviceID, PayloadRaw: []byte("{\"temp\":20}")})
 		token.Wait()
 		if token.Error() != nil {
 			t.Fatal(token.Error().Error())
