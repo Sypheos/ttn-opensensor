@@ -20,18 +20,28 @@ const OpenSensorURI string = "https://realtime.opensensors.io/v1/topics/"
 const uriClientId string = "client-id"
 const uriPassword string = "password"
 
-//The Thing Network mqtt parameters
+//The Thing Network client parameters
 type TtnAccess struct {
 	AppId, Key, Broker, DeviceId string
 }
 
-//OpenSensor mqtt parameters
+//OpenSensor client parameters
 type OpenSensorAccess struct {
 	ClientId, Pw, Key, Topic string
 }
 
 type openSensorData struct {
-	Data string `json:"data"`
+	Data []byte `json:"data"`
+}
+
+type OpenSensor struct {
+	client       mqtt.Client
+	sensorAccess OpenSensorAccess
+	ttnAccess    TtnAccess
+}
+
+func NewOpenSensor(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) {
+
 }
 
 func Start(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) {
@@ -39,16 +49,14 @@ func Start(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) {
 	ctx := apex.Stdout().WithField(logName, "Go Client")
 	log.Set(ctx)
 
-	mqttClient := mqtt.NewClient(ctx, id, ttnAccess.AppId, ttnAccess.Key, ttnAccess.Broker)
-	if err := mqttClient.Connect(); err != nil {
+	client := mqtt.NewClient(ctx, id, ttnAccess.AppId, ttnAccess.Key, ttnAccess.Broker)
+	if err := client.Connect(); err != nil {
 		ctx.WithError(err).Fatal("Could not connect")
 	}
-	//go Uplink([]byte("heelp"), sensorAccess)
-	token := mqttClient.SubscribeDeviceUplink(ttnAccess.AppId, ttnAccess.DeviceId,
+	token := client.SubscribeDeviceUplink(ttnAccess.AppId, ttnAccess.DeviceId,
 		func(client mqtt.Client, appID string, devID string, req types.UplinkMessage) {
 			log.Get().Info(string(req.PayloadRaw))
-
-			Uplink(req.PayloadRaw, sensorAccess)
+			uplink(req.PayloadRaw, sensorAccess)
 		})
 	token.Wait()
 	if err := token.Error(); err != nil {
@@ -56,9 +64,9 @@ func Start(ttnAccess TtnAccess, sensorAccess OpenSensorAccess) {
 	}
 }
 
-func Uplink(payload []byte, access OpenSensorAccess) {
+func uplink(payload []byte, access OpenSensorAccess) {
 
-	data := openSensorData{string(payload)}
+	data := openSensorData{payload}
 	b := new(bytes.Buffer)
 	err := json.NewEncoder(b).Encode(data)
 	if err != nil {
@@ -100,5 +108,5 @@ func prepareRequest(method string, access OpenSensorAccess, b []byte) *http.Requ
 }
 
 func urlFormat(access OpenSensorAccess) string {
-	return OpenSensorURI + access.Topic
+	return /*OpenSensorURI +*/ access.Topic
 }
