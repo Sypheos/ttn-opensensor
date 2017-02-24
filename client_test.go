@@ -19,7 +19,10 @@ func TestUplink(t *testing.T) {
 		"http://localhost:3000"}
 	ttna := TtnAccess{"open-sensor", "ttn-account-v2.CLWM-c78CsFxUUZPfXCe9933kdVHdV1nIzrNk-kApP8",
 		"tcp://localhost:1883", "heater"}
-	o := NewOpenSensor(ttna, sensor)
+	o, err := NewOpenSensor(ttna, sensor)
+	if err != nil {
+		t.Fatal(err)
+	}
 	o.Start()
 	t.Run("httpServ", func(t *testing.T) {
 		ctx := apex.Stdout().WithField("TestClientPub", "testClient")
@@ -58,4 +61,5 @@ func TestUplink(t *testing.T) {
 		d := openSensorData{[]byte("{\"temp\":20}")}
 		assert.Equal(t, r, d)
 	}
+	o.Stop()
 }
