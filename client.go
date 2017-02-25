@@ -17,19 +17,20 @@ import (
 
 const id string = "ttnctl"
 const logName = "Opensensor"
+const openSensorURI = "https://realtime.opensensors.io/v1/topics/"
 
 //TtnAccess structure representing The Thing Network mqtt parameters
 type TtnAccess struct {
 	AppID, Key, Broker, DeviceID string
 }
 
-//SensorAccess, OpenSensor.io http endpoint parameters http parameters
+//SensorAccess OpenSensor.io http endpoint parameters http parameters
 type SensorAccess struct {
 	ClientID, Pw, Key, Topic string
 }
 
 type openSensorData struct {
-	Data []byte `json:"data"`
+	Data interface{} `json:"data"`
 }
 
 //OpenSensor integration structure definition
@@ -90,29 +91,47 @@ func (o *OpenSensor) uplink(payload []byte) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	resp, err := (&http.Client{Transport: tr, Timeout: time.Second * 10}).Post(o.httpTopic.String(), "application/json", b)
+	req, err := o.prepareReq("POST", b)
+	if err != nil {
+		o.ctx.WithError(err).Fatal("Could not reach create request for http endpoint")
+		return
+	}
+	resp, err := (&http.Client{Transport: tr, Timeout: time.Second * 10}).Do(req)
 	if err != nil {
 		o.ctx.WithError(err).Fatal("Could not reach Opensor http endpoint")
 		return
 	}
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		o.ctx.Error(resp.Status)
 	}
 }
 
 func prepareURL(sensor SensorAccess) (*url.URL, error) {
 
-	u, err := url.Parse(sensor.Topic)
+	u, err := url.Parse(openSensorURI + url.QueryEscape(sensor.Topic))
 	if err != nil {
 		return nil, err
 	}
-	u.Query().Add("client-id", sensor.ClientID)
-	u.Query().Add("password", sensor.Pw)
-	u.Query().Encode()
+	q := u.Query()
+	q.Add("client-id", sensor.ClientID)
+	q.Add("password", sensor.Pw)
+	u.RawQuery = q.Encode()
 	return u, nil
 }
+
+func (o *OpenSensor) prepareReq(method string, b io.Reader) (*http.Request, error) {
+
+	req, err := http.NewRequest(method, o.httpTopic.String(), b)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", "api-key "+o.sensorAccess.Key)
+	return req, nil
+}
+
 func encode(payload []byte) (io.Reader, error) {
-	data := openSensorData{payload}
+	data := openSensorData{string(payload)}
 	b := new(bytes.Buffer)
 	err := json.NewEncoder(b).Encode(data)
 	if err != nil {
